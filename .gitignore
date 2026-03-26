@@ -1,0 +1,17 @@
+# Xcode
+#
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+#
+.build/
+.swiftpm/
+
+# OS X
+#
+.DS_Store
