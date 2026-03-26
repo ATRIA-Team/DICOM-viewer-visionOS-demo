@@ -14,7 +14,7 @@
 /* Begin PBXFileReference section */
 		A5BEF10E2F73F7B30033EB1B /* DemoDICOM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoDICOM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5BEF1122F73F7B30033EB1B /* RealityKitContent */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = RealityKitContent; sourceTree = "<group>"; };
-		A5BEF13F2F7425250033EB1B /* DICOM-Decoder */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "DICOM-Decoder"; path = "/Users/michelecoppola/Desktop/swiftUI projects/DemoDICOM/Packages/DICOM-Decoder"; sourceTree = "<absolute>"; };
+		A5BEF13F2F7425250033EB1B /* DICOM-Decoder */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "DICOM-Decoder"; path = "Packages/DICOM-Decoder"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -129,7 +129,7 @@
 			mainGroup = A5BEF1052F73F7B30033EB1B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A5BEF1222F73F7E60033EB1B /* XCRemoteSwiftPackageReference "DICOM-Decoder" */,
+				A5BEF1222F73F7E60033EB1B /* XCLocalSwiftPackageReference "Packages/DICOM-Decoder" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A5BEF10F2F73F7B30033EB1B /* Products */;
@@ -366,16 +366,12 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		A5BEF1222F73F7E60033EB1B /* XCRemoteSwiftPackageReference "DICOM-Decoder" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ThalesMMS/DICOM-Decoder.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.1;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		A5BEF1222F73F7E60033EB1B /* XCLocalSwiftPackageReference "Packages/DICOM-Decoder" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Packages/DICOM-Decoder";
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		A5BEF1132F73F7B30033EB1B /* RealityKitContent */ = {
@@ -384,7 +380,7 @@
 		};
 		A5BEF1232F73F7E60033EB1B /* DicomCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A5BEF1222F73F7E60033EB1B /* XCRemoteSwiftPackageReference "DICOM-Decoder" */;
+			package = A5BEF1222F73F7E60033EB1B /* XCLocalSwiftPackageReference "Packages/DICOM-Decoder" */;
 			productName = DicomCore;
 		};
 /* End XCSwiftPackageProductDependency section */
