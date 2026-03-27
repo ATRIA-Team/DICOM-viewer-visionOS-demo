@@ -4,20 +4,23 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// A dedicated 2-D annotation window opened from the slice viewer.
 ///
 /// The user opens this window by pinching and holding on the CT scan image.
 /// Drawing is done with Apple Pencil Pro directly on the window surface.
-/// Strokes are captured via UITouch events (type == .pencil) and rendered
-/// as CAShapeLayers for smooth, low-latency inking.
+/// Tapping "Save" composites the slice and strokes into a PNG and persists it
+/// via SwiftData so it appears in the Annotations tab.
 struct AnnotationView: View {
 
     @Environment(DICOMStore.self) private var store
+    @Environment(\.modelContext) private var modelContext
 
     @State private var canvasState = PencilCanvasState()
     @State private var brushColor: Color   = .red
     @State private var brushSize:  CGFloat = 3.0
+    @State private var showSavedConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +29,11 @@ struct AnnotationView: View {
                     "Annotate — Slice \(store.currentSliceIndex + 1) / \(store.sliceCount)"
                 )
                 .toolbar { toolbarContent }
+                .overlay(alignment: .top) {
+                    if showSavedConfirmation {
+                        savedBanner
+                    }
+                }
         }
     }
 
@@ -37,7 +45,6 @@ struct AnnotationView: View {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
                 .scaledToFit()
-                // Pencil canvas overlaid exactly on the image bounds
                 .overlay {
                     PencilCanvas(
                         state:      canvasState,
@@ -45,7 +52,6 @@ struct AnnotationView: View {
                         brushSize:  brushSize
                     )
                 }
-                // Usage hint — fades once a stroke has been drawn
                 .overlay(alignment: .bottom) {
                     if canvasState.strokeCount == 0 {
                         Text("Draw with Apple Pencil Pro")
@@ -67,17 +73,55 @@ struct AnnotationView: View {
         }
     }
 
+    // MARK: - Save
+
+    private func saveAnnotation() {
+        guard let cgImage = store.currentSliceImage,
+              let composite = canvasState.snapshot(backgroundCGImage: cgImage),
+              let pngData   = composite.pngData() else { return }
+
+        let annotation = SavedAnnotation(
+            sliceIndex:         store.currentSliceIndex,
+            patientName:        store.patientName,
+            seriesDescription:  store.seriesDescription,
+            imageData:          pngData
+        )
+        modelContext.insert(annotation)
+
+        withAnimation {
+            showSavedConfirmation = true
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation {
+                showSavedConfirmation = false
+            }
+        }
+    }
+
+    // MARK: - Saved banner
+
+    private var savedBanner: some View {
+        Label("Saved to Annotations", systemImage: "checkmark.circle.fill")
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.green.gradient, in: Capsule())
+            .padding(.top, 12)
+            .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
 
         ToolbarItemGroup(placement: .topBarLeading) {
-            // Brush colour
             ColorPicker("Color", selection: $brushColor, supportsOpacity: false)
                 .labelsHidden()
 
-            // Brush size
             HStack(spacing: 8) {
                 Image(systemName: "pencil.tip")
                     .foregroundStyle(.secondary)
@@ -92,6 +136,14 @@ struct AnnotationView: View {
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
+            // Save composite image to the Annotations tab
+            Button {
+                saveAnnotation()
+            } label: {
+                Label("Save", systemImage: "square.and.arrow.down")
+            }
+            .disabled(canvasState.strokeCount == 0)
+
             // Undo last stroke
             Button {
                 canvasState.undo()
