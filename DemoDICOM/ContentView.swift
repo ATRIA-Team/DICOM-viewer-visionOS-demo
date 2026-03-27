@@ -10,10 +10,15 @@ import DicomCore
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    
-    @State private var store = DICOMStore()
-    
+
+    /// The store is owned by `RootView` and shared via the environment.
+    @Environment(DICOMStore.self) private var store
+
     var body: some View {
+        // `@Bindable` lets us derive SwiftUI bindings from the @Observable store
+        // for modifiers that require them (fileImporter, etc.).
+        @Bindable var store = store
+
         NavigationStack {
             Group {
                 if store.sliceImages.isEmpty && !store.isLoading {
@@ -24,6 +29,9 @@ struct ContentView: View {
             }
             .navigationTitle("DICOM Viewer")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    sharePlayButton
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         store.isShowingFolderPicker = true
@@ -39,21 +47,17 @@ struct ContentView: View {
             ) { result in
                 switch result {
                 case .success(let urls):
-                    if let url = urls.first {
-                        store.importFolder(url: url)
-                    }
+                    if let url = urls.first { store.importFolder(url: url) }
                 case .failure(let error):
                     store.errorMessage = "File picker error: \(error.localizedDescription)"
                 }
             }
             .overlay {
-                if store.isLoading {
-                    loadingOverlay
-                }
+                if store.isLoading { loadingOverlay }
             }
             .alert(
                 "Error",
-                isPresented: .init(
+                isPresented: Binding(
                     get: { store.errorMessage != nil },
                     set: { if !$0 { store.errorMessage = nil } }
                 )
@@ -64,24 +68,60 @@ struct ContentView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
+    /// Shows SharePlay session status, or an invitation button when not in session.
+    private var sharePlayButton: some View {
+        Group {
+            if store.sharePlay.isInSession {
+                Label(
+                    "\(store.sharePlay.participantCount) in session",
+                    systemImage: "shareplay"
+                )
+                .foregroundStyle(.green)
+                .labelStyle(.titleAndIcon)
+            } else {
+                Button {
+                    Task { await store.sharePlay.activate() }
+                } label: {
+                    Label(
+                        store.sharePlay.isEligibleForGroupSession
+                            ? "Invite to SharePlay"
+                            : "SharePlay",
+                        systemImage: "shareplay"
+                    )
+                }
+            }
+        }
+        .alert(
+            "SharePlay Unavailable",
+            isPresented: Binding(
+                get: { store.sharePlay.activationError != nil },
+                set: { if !$0 { store.sharePlay.activationError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(store.sharePlay.activationError ?? "")
+        }
+    }
+
     private var emptyStateView: some View {
         VStack(spacing: 24) {
             Image(systemName: "doc.viewfinder")
                 .font(.system(size: 72))
                 .foregroundStyle(.secondary)
-            
+
             Text("No CT Scan Loaded")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             Text("Import a folder containing DICOM (.dcm) files\nto view CT scan slices.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            
+
             Button {
                 store.isShowingFolderPicker = true
             } label: {
@@ -94,13 +134,11 @@ struct ContentView: View {
         }
         .padding()
     }
-    
+
     private var sliceViewerView: some View {
         VStack(spacing: 16) {
-            // Metadata header
             metadataHeader
-            
-            // Slice image
+
             if let cgImage = store.currentSliceImage {
                 Image(decorative: cgImage, scale: 1.0)
                     .resizable()
@@ -109,16 +147,13 @@ struct ContentView: View {
                     .shadow(radius: 4)
                     .frame(maxHeight: .infinity)
             }
-            
-            // Slice navigation controls
+
             sliceControls
-            
-            // Preset picker
             presetPicker
         }
         .padding()
     }
-    
+
     private var metadataHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -134,9 +169,9 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             if !store.modality.isEmpty {
                 Text(store.modality)
                     .font(.caption)
@@ -147,7 +182,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private var sliceControls: some View {
         VStack(spacing: 8) {
             if store.sliceCount > 1 {
@@ -160,22 +195,27 @@ struct ContentView: View {
                     step: 1
                 )
             }
-            
+
             Text("Slice \(store.currentSliceIndex + 1) / \(store.sliceCount)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
     }
-    
+
     private var presetPicker: some View {
         HStack {
             Text("Window Preset")
                 .font(.subheadline)
-            
+
             Spacer()
-            
-            Picker("Preset", selection: $store.selectedPreset) {
+
+            // Manual Binding because @Environment doesn't expose $store in
+            // computed properties — only inside body where @Bindable is declared.
+            Picker("Preset", selection: Binding(
+                get: { store.selectedPreset },
+                set: { store.selectedPreset = $0 }
+            )) {
                 ForEach(DCMWindowingProcessor.ctPresets, id: \.self) { preset in
                     Text(preset.displayName).tag(preset)
                 }
@@ -186,16 +226,14 @@ struct ContentView: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
-    
+
     private var loadingOverlay: some View {
         ZStack {
             Color.black.opacity(0.3)
                 .ignoresSafeArea()
-            
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.5)
-                
                 Text("Loading DICOM slices…")
                     .font(.headline)
             }
@@ -207,4 +245,5 @@ struct ContentView: View {
 
 #Preview(windowStyle: .automatic) {
     ContentView()
+        .environment(DICOMStore())
 }

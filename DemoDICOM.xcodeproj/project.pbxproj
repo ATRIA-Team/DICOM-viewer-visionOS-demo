@@ -14,7 +14,6 @@
 /* Begin PBXFileReference section */
 		A5BEF10E2F73F7B30033EB1B /* DemoDICOM.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoDICOM.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5BEF1122F73F7B30033EB1B /* RealityKitContent */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = RealityKitContent; sourceTree = "<group>"; };
-		A5BEF13F2F7425250033EB1B /* DICOM-Decoder */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "DICOM-Decoder"; path = "Packages/DICOM-Decoder"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -72,7 +71,6 @@
 			isa = PBXGroup;
 			children = (
 				A5BEF1122F73F7B30033EB1B /* RealityKitContent */,
-				A5BEF13F2F7425250033EB1B /* DICOM-Decoder */,
 			);
 			path = Packages;
 			sourceTree = "<group>";
@@ -167,9 +165,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DemoDICOM/DemoDICOM.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2XSHXS4594;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 2263LPF2FA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
@@ -197,9 +196,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DemoDICOM/DemoDICOM.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2XSHXS4594;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 2263LPF2FA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";

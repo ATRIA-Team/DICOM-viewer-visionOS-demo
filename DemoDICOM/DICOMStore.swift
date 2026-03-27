@@ -22,19 +22,36 @@ import UniformTypeIdentifiers
 /// 4. Changing `selectedPreset` re-applies windowing across all slices.
 @Observable
 final class DICOMStore {
-    
+
+    // MARK: - SharePlay
+
+    /// Coordinator that manages the SharePlay session for this store.
+    let sharePlay = SharePlayCoordinator()
+
+    // MARK: - Init
+
+    init() {
+        sharePlay.store = self
+    }
+
     // MARK: - Public State
-    
+
     /// The decoded, windowed slice images for the current series.
     private(set) var sliceImages: [CGImage] = []
-    
+
     /// Index of the currently displayed slice.
-    var currentSliceIndex: Int = 0
-    
+    var currentSliceIndex: Int = 0 {
+        didSet {
+            guard currentSliceIndex != oldValue else { return }
+            sharePlay.send(DICOMSyncMessage(kind: .sliceChanged(index: currentSliceIndex)))
+        }
+    }
+
     /// The active window/level preset.
     var selectedPreset: MedicalPreset = .softTissue {
         didSet {
             guard selectedPreset != oldValue else { return }
+            sharePlay.send(DICOMSyncMessage(kind: .presetChanged(rawValue: selectedPreset.rawValue)))
             reapplyWindowing()
         }
     }
@@ -77,8 +94,28 @@ final class DICOMStore {
     /// Stored as (pixels, width, height).
     private var rawPixelBuffers16: [([UInt16], Int, Int)] = []
     
+    // MARK: - SharePlay API
+
+    /// Applies a received SharePlay message to local state.
+    /// Called by `SharePlayCoordinator` with `isApplyingRemoteChange` set to
+    /// prevent the resulting `didSet` observers from re-broadcasting.
+    @MainActor
+    func applySharePlayMessage(_ message: DICOMSyncMessage) {
+        switch message.kind {
+        case .sliceChanged(let index):
+            guard index >= 0, index < sliceCount else { return }
+            currentSliceIndex = index
+        case .presetChanged(let rawValue):
+            guard let preset = MedicalPreset(rawValue: rawValue) else { return }
+            selectedPreset = preset
+        case .participantReady, .participantNotReady:
+            // Lobby messages are handled by SharePlayCoordinator, not the store.
+            break
+        }
+    }
+
     // MARK: - Public API
-    
+
     /// Import DICOM slices from a folder URL obtained via the file picker.
     @MainActor
     func importFolder(url: URL) {
@@ -87,7 +124,9 @@ final class DICOMStore {
         sliceImages = []
         rawPixelBuffers16 = []
         currentSliceIndex = 0
-        
+        // Signal to peers that we are re-loading and not yet ready to view.
+        sharePlay.broadcastNotReady()
+
         Task.detached { [weak self] in
             guard let self else { return }
             await self.performImport(url: url)
@@ -257,6 +296,12 @@ final class DICOMStore {
                 self.seriesDescription = seriesInfo["SeriesDescription"] ?? ""
                 self.modality = modalityStr
                 self.isLoading = false
+                // Notify peers that this participant has finished loading and is ready.
+                self.sharePlay.broadcastReady(
+                    sliceCount: images.count,
+                    seriesDescription: seriesInfo["SeriesDescription"] ?? "",
+                    patientName: patientInfo["Name"] ?? ""
+                )
             }
             
         } catch {
