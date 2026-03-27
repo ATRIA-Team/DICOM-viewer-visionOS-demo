@@ -6,14 +6,13 @@
 import SwiftUI
 import GroupActivities
 
-/// The single source of truth for the app's state.
+/// Routes between `LobbyView` and `ContentView` based on SharePlay session state.
 ///
-/// Owns the `DICOMStore` and the SharePlay session listener, and routes between:
-/// - `LobbyView`   — when a session is active but not yet started (lobby phase)
-/// - `ContentView` — solo mode, or once all participants are ready (viewer phase)
+/// The `DICOMStore` is owned by `DemoDICOMApp` and injected via `.environment`.
+/// This view listens for incoming `GroupSession`s for the lifetime of the window.
 struct RootView: View {
 
-    @State private var store = DICOMStore()
+    @Environment(DICOMStore.self) private var store
 
     var body: some View {
         Group {
@@ -26,11 +25,8 @@ struct RootView: View {
                 ContentView()
             }
         }
-        .environment(store)
         .task {
             // Listen for incoming GroupSessions for the lifetime of this scene.
-            // This fires when the local user activates SharePlay OR when they
-            // accept an invitation from a peer.
             for await session in DICOMViewerActivity.sessions() {
                 store.sharePlay.handleIncomingSession(session)
             }

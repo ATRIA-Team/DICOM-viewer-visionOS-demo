@@ -26,6 +26,8 @@ struct DICOMSyncMessage: Codable {
         case participantReady(sliceCount: Int, seriesDescription: String, patientName: String)
         /// A participant cleared their data or started a fresh import.
         case participantNotReady
+        /// A participant (local or remote) cleared all drawings.
+        case clearDrawings
     }
 
     let kind: Kind

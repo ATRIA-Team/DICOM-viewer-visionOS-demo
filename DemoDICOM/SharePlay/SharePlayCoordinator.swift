@@ -76,6 +76,7 @@ final class SharePlayCoordinator {
     private var localParticipantID: UUID?
     private var session: GroupSession<DICOMViewerActivity>?
     private var messenger: GroupSessionMessenger?
+    private var unreliableMessenger: GroupSessionMessenger?
     private var sessionTasks: [Task<Void, Never>] = []
     private let groupStateObserver = GroupStateObserver()
 
@@ -126,6 +127,8 @@ final class SharePlayCoordinator {
         self.session = session
         let messenger = GroupSessionMessenger(session: session)
         self.messenger = messenger
+        let unreliableMessenger = GroupSessionMessenger(session: session, deliveryMode: .unreliable)
+        self.unreliableMessenger = unreliableMessenger
 
         let localID = session.localParticipant.id
         localParticipantID = localID
@@ -166,11 +169,19 @@ final class SharePlayCoordinator {
             }
         })
 
-        // Receive and route messages from peers
+        // Receive and route reliable messages from peers (lobby + viewer state)
         sessionTasks.append(Task { @MainActor [weak self] in
             guard let self else { return }
             for await (message, context) in messenger.messages(of: DICOMSyncMessage.self) {
                 self.apply(message, from: context.source)
+            }
+        })
+
+        // Receive real-time draw points (unreliable / best-effort, like UDP)
+        sessionTasks.append(Task { @MainActor [weak self] in
+            guard let self else { return }
+            for await (message, _) in unreliableMessenger.messages(of: DrawPointMessage.self) {
+                self.store?.drawing.receiveRemotePoint(message)
             }
         })
     }
@@ -218,6 +229,25 @@ final class SharePlayCoordinator {
         guard isInSession, !isApplyingRemoteChange, let messenger else { return }
         Task {
             try? await messenger.send(message)
+        }
+    }
+
+    /// Sends a single real-time draw point to all peers via the unreliable messenger.
+    /// Called by `ImmersiveDrawingView` for every locally drawn stylus point.
+    func sendDrawPoint(strokeID: UUID, point: SIMD3<Float>, thickness: Float, color: SIMD4<Float>) {
+        guard isInSession, let unreliableMessenger else { return }
+        let message = DrawPointMessage(strokeID: strokeID, point: point, thickness: thickness, color: color)
+        Task {
+            try? await unreliableMessenger.send(message)
+        }
+    }
+
+    /// Broadcasts a clear-drawings command to all peers via the reliable messenger.
+    /// Called by the local clear button in `ContentView`.
+    func sendClearDrawings() {
+        guard isInSession, let messenger else { return }
+        Task {
+            try? await messenger.send(DICOMSyncMessage(kind: .clearDrawings))
         }
     }
 
@@ -288,6 +318,9 @@ final class SharePlayCoordinator {
             isApplyingRemoteChange = true
             defer { isApplyingRemoteChange = false }
             store?.applySharePlayMessage(message)
+
+        case .clearDrawings:
+            store?.drawing.receiveClearDrawings()
         }
     }
 
@@ -307,6 +340,7 @@ final class SharePlayCoordinator {
         localParticipantID = nil
         session = nil
         messenger = nil
+        unreliableMessenger = nil
         sessionTasks.forEach { $0.cancel() }
         sessionTasks = []
     }

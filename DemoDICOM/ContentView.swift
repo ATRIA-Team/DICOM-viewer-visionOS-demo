@@ -11,8 +11,12 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
 
-    /// The store is owned by `RootView` and shared via the environment.
+    /// The store is owned by `DemoDICOMApp` and shared via the environment.
     @Environment(DICOMStore.self) private var store
+
+    @Environment(\.openImmersiveSpace) private var openImmersiveSpace
+    @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
+    @State private var isDrawingSpaceOpen = false
 
     var body: some View {
         // `@Bindable` lets us derive SwiftUI bindings from the @Observable store
@@ -32,7 +36,8 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     sharePlayButton
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    drawingToggleButton
                     Button {
                         store.isShowingFolderPicker = true
                     } label: {
@@ -150,6 +155,9 @@ struct ContentView: View {
 
             sliceControls
             presetPicker
+            if isDrawingSpaceOpen {
+                drawingToolsSection
+            }
         }
         .padding()
     }
@@ -224,6 +232,76 @@ struct ContentView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// Toolbar button that opens / closes the mixed-immersion drawing space.
+    private var drawingToggleButton: some View {
+        Button {
+            Task {
+                if isDrawingSpaceOpen {
+                    await dismissImmersiveSpace()
+                    isDrawingSpaceOpen = false
+                } else {
+                    let result = await openImmersiveSpace(id: "DrawingSpace")
+                    if case .opened = result {
+                        isDrawingSpaceOpen = true
+                    }
+                }
+            }
+        } label: {
+            Label(
+                isDrawingSpaceOpen ? "Stop Drawing" : "Draw",
+                systemImage: isDrawingSpaceOpen ? "pencil.slash" : "pencil.and.outline"
+            )
+        }
+        .tint(isDrawingSpaceOpen ? .orange : .primary)
+    }
+
+    /// Brush settings panel shown in the viewer while the drawing space is open.
+    private var drawingToolsSection: some View {
+        @Bindable var store = store
+        return VStack(spacing: 12) {
+            HStack {
+                Text("Drawing Tools")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button(role: .destructive) {
+                    // Clear locally and broadcast to all peers
+                    store.drawing.receiveClearDrawings()
+                    store.sharePlay.sendClearDrawings()
+                } label: {
+                    Label("Clear All", systemImage: "trash")
+                        .font(.subheadline)
+                }
+            }
+
+            HStack {
+                Text("Color")
+                    .font(.subheadline)
+                Spacer()
+                ColorPicker("Brush Color", selection: $store.drawing.brushColor, supportsOpacity: false)
+                    .labelsHidden()
+            }
+
+            HStack {
+                Text("Size")
+                    .font(.subheadline)
+                Slider(
+                    value: $store.drawing.brushSize,
+                    in: 0.001...0.02,
+                    step: 0.001
+                )
+                Text(String(format: "%.0f mm", store.drawing.brushSize * 1000))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 

@@ -28,6 +28,11 @@ final class DICOMStore {
     /// Coordinator that manages the SharePlay session for this store.
     let sharePlay = SharePlayCoordinator()
 
+    // MARK: - Drawing
+
+    /// Owns brush settings and routes incoming drawing messages.
+    var drawing = DrawingManager()
+
     // MARK: - Init
 
     init() {
@@ -108,8 +113,8 @@ final class DICOMStore {
         case .presetChanged(let rawValue):
             guard let preset = MedicalPreset(rawValue: rawValue) else { return }
             selectedPreset = preset
-        case .participantReady, .participantNotReady:
-            // Lobby messages are handled by SharePlayCoordinator, not the store.
+        case .participantReady, .participantNotReady, .clearDrawings:
+            // Lobby and drawing messages are handled elsewhere, not by the store.
             break
         }
     }
