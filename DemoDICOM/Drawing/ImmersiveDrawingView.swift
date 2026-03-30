@@ -17,6 +17,7 @@ import ARKit
 struct ImmersiveDrawingView: View {
 
     @Environment(DICOMStore.self) private var store
+    @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
 
     @State private var drawingRoot  = Entity()
     @State private var stylusManager = StylusTipManager()
@@ -28,7 +29,7 @@ struct ImmersiveDrawingView: View {
     // MARK: - Body
 
     var body: some View {
-        RealityView { content in
+        RealityView { content, attachments in
             // Drawing strokes live here
             content.add(drawingRoot)
 
@@ -37,6 +38,16 @@ struct ImmersiveDrawingView: View {
             content.add(stylusRoot)
             stylusManager.rootEntity = stylusRoot
             await stylusManager.handleControllerSetup()
+
+            // Place the floating stop-drawing panel in the scene
+            if let panel = attachments.entity(for: "drawingPanel") {
+                panel.position = [0, 1.4, -0.8]   // ~1.4 m high, 80 cm in front
+                content.add(panel)
+            }
+        } attachments: {
+            Attachment(id: "drawingPanel") {
+                drawingPanel
+            }
         }
         // Receive remote draw points from peers
         .onReceive(
@@ -66,6 +77,60 @@ struct ImmersiveDrawingView: View {
         }
         // Main drawing loop — runs for the lifetime of this immersive space
         .task { await runDrawingLoop() }
+    }
+
+    // MARK: - Floating panel (shown in immersive space)
+
+    /// Floating SwiftUI panel with a stop button and brush controls,
+    /// displayed as a RealityKit attachment since the main window's
+    /// interaction is disabled while drawing.
+    private var drawingPanel: some View {
+        @Bindable var store = store
+        return VStack(spacing: 14) {
+            HStack {
+                Text("Drawing Tools")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task {
+                        await dismissImmersiveSpace()
+                        store.isDrawingActive = false
+                    }
+                } label: {
+                    Label("Stop Drawing", systemImage: "pencil.slash")
+                }
+                .tint(.orange)
+            }
+
+            Divider()
+
+            HStack {
+                Text("Color")
+                Spacer()
+                ColorPicker("Brush Color", selection: $store.drawing.brushColor, supportsOpacity: false)
+                    .labelsHidden()
+            }
+
+            HStack {
+                Text("Size")
+                Slider(value: $store.drawing.brushSize, in: 0.001...0.02, step: 0.001)
+                Text(String(format: "%.0f mm", store.drawing.brushSize * 1000))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .trailing)
+            }
+
+            Button(role: .destructive) {
+                store.drawing.receiveClearDrawings()
+                store.sharePlay.sendClearDrawings()
+            } label: {
+                Label("Clear All", systemImage: "trash")
+            }
+        }
+        .padding(20)
+        .frame(width: 340)
+        .glassBackgroundEffect()
     }
 
     // MARK: - Drawing loop

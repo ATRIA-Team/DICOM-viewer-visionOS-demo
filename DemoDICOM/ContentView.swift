@@ -9,6 +9,27 @@ import SwiftUI
 import DicomCore
 import UniformTypeIdentifiers
 
+// MARK: - Window interaction disabler
+
+/// Invisible UIView that finds its parent UIWindow and toggles
+/// `isUserInteractionEnabled` so visionOS stops routing stylus
+/// button presses as indirect-pointer clicks into this window.
+private struct WindowInteractionToggle: UIViewRepresentable {
+    var enabled: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isHidden = true
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            uiView.window?.isUserInteractionEnabled = enabled
+        }
+    }
+}
+
 struct ContentView: View {
 
     /// The store is owned by `DemoDICOMApp` and shared via the environment.
@@ -17,7 +38,6 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
-    @State private var isDrawingSpaceOpen = false
 
     var body: some View {
         // `@Bindable` lets us derive SwiftUI bindings from the @Observable store
@@ -72,6 +92,11 @@ struct ContentView: View {
             } message: {
                 Text(store.errorMessage ?? "")
             }
+        }
+        // Disable window interaction while drawing so the stylus button
+        // isn't intercepted as a pointer click by visionOS.
+        .background {
+            WindowInteractionToggle(enabled: !store.isDrawingActive)
         }
     }
 
@@ -165,9 +190,6 @@ struct ContentView: View {
 
             sliceControls
             presetPicker
-            if isDrawingSpaceOpen {
-                drawingToolsSection
-            }
         }
         .padding()
     }
@@ -249,70 +271,23 @@ struct ContentView: View {
     private var drawingToggleButton: some View {
         Button {
             Task {
-                if isDrawingSpaceOpen {
+                if store.isDrawingActive {
                     await dismissImmersiveSpace()
-                    isDrawingSpaceOpen = false
+                    store.isDrawingActive = false
                 } else {
                     let result = await openImmersiveSpace(id: "DrawingSpace")
                     if case .opened = result {
-                        isDrawingSpaceOpen = true
+                        store.isDrawingActive = true
                     }
                 }
             }
         } label: {
             Label(
-                isDrawingSpaceOpen ? "Stop Drawing" : "Draw",
-                systemImage: isDrawingSpaceOpen ? "pencil.slash" : "pencil.and.outline"
+                store.isDrawingActive ? "Stop Drawing" : "Draw",
+                systemImage: store.isDrawingActive ? "pencil.slash" : "pencil.and.outline"
             )
         }
-        .tint(isDrawingSpaceOpen ? .orange : .primary)
-    }
-
-    /// Brush settings panel shown in the viewer while the drawing space is open.
-    private var drawingToolsSection: some View {
-        @Bindable var store = store
-        return VStack(spacing: 12) {
-            HStack {
-                Text("Drawing Tools")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Button(role: .destructive) {
-                    // Clear locally and broadcast to all peers
-                    store.drawing.receiveClearDrawings()
-                    store.sharePlay.sendClearDrawings()
-                } label: {
-                    Label("Clear All", systemImage: "trash")
-                        .font(.subheadline)
-                }
-            }
-
-            HStack {
-                Text("Color")
-                    .font(.subheadline)
-                Spacer()
-                ColorPicker("Brush Color", selection: $store.drawing.brushColor, supportsOpacity: false)
-                    .labelsHidden()
-            }
-
-            HStack {
-                Text("Size")
-                    .font(.subheadline)
-                Slider(
-                    value: $store.drawing.brushSize,
-                    in: 0.001...0.02,
-                    step: 0.001
-                )
-                Text(String(format: "%.0f mm", store.drawing.brushSize * 1000))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 44, alignment: .trailing)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .tint(store.isDrawingActive ? .orange : .primary)
     }
 
     private var loadingOverlay: some View {

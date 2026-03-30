@@ -33,6 +33,10 @@ final class DICOMStore {
     /// Owns brush settings and routes incoming drawing messages.
     var drawing = DrawingManager()
 
+    /// Whether the immersive drawing space is currently open.
+    /// Shared so both ContentView and ImmersiveDrawingView can read/write it.
+    var isDrawingActive = false
+
     // MARK: - Init
 
     init() {
