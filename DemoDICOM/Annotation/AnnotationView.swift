@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// A dedicated 2-D annotation window opened from the slice viewer.
 ///
@@ -114,8 +115,40 @@ struct AnnotationView: View {
 
     private func saveAnnotation() {
         guard let cgImage = store.currentSliceImage,
-              let composite = canvasState.snapshot(backgroundCGImage: cgImage),
-              let pngData   = composite.pngData() else { return }
+              let base = canvasState.snapshot(backgroundCGImage: cgImage) else { return }
+
+        // Composite remote strokes (from other SharePlay participants) on top of the
+        // local snapshot. Local strokes are already baked in by PencilCanvasUIView.snapshot().
+        let remoteStrokes = store.annotationPanelStrokes.values.filter {
+            !localStrokeIDs.contains($0.id)
+        }
+
+        let finalImage: UIImage
+        if remoteStrokes.isEmpty {
+            finalImage = base
+        } else {
+            let size = base.size
+            let renderer = UIGraphicsImageRenderer(size: size)
+            finalImage = renderer.image { _ in
+                base.draw(at: .zero)
+                for stroke in remoteStrokes {
+                    guard stroke.points.count >= 2 else { continue }
+                    let path = UIBezierPath()
+                    path.move(to: CGPoint(x: stroke.points[0].x * size.width,
+                                         y: stroke.points[0].y * size.height))
+                    for pt in stroke.points.dropFirst() {
+                        path.addLine(to: CGPoint(x: pt.x * size.width, y: pt.y * size.height))
+                    }
+                    path.lineWidth = stroke.lineWidth
+                    path.lineCapStyle = .round
+                    path.lineJoinStyle = .round
+                    UIColor(stroke.color).setStroke()
+                    path.stroke()
+                }
+            }
+        }
+
+        guard let pngData = finalImage.pngData() else { return }
 
         let annotation = SavedAnnotation(
             sliceIndex:         store.currentSliceIndex,

@@ -38,6 +38,15 @@ struct DemoDICOMApp: App {
         .defaultSize(width: 720, height: 780)
         .modelContainer(annotationContainer)  // same instance → same store
 
+        // Floating brush-controls window opened automatically when DrawingSpace opens.
+        // Lives as a separate window so the user can drag it anywhere.
+        WindowGroup(id: "drawingTools") {
+            DrawingToolsPanel()
+                .environment(store)
+        }
+        .defaultSize(width: 360, height: 220)
+        .windowResizability(.contentSize)
+
         // Mixed-immersion drawing space.
         // Opened/dismissed from ContentView via openImmersiveSpace / dismissImmersiveSpace.
         ImmersiveSpace(id: "DrawingSpace") {

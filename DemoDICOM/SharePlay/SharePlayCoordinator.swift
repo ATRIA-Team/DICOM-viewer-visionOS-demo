@@ -119,7 +119,7 @@ final class SharePlayCoordinator {
     /// Called by `RootView` each time a `GroupSession` arrives
     /// (user started one, or accepted a peer's invitation).
     @MainActor
-    func handleIncomingSession(_ session: GroupSession<DICOMViewerActivity>) {
+    func handleIncomingSession(_ session: GroupSession<DICOMViewerActivity>) async {
         // Cancel any prior session work
         sessionTasks.forEach { $0.cancel() }
         sessionTasks = []
@@ -134,6 +134,18 @@ final class SharePlayCoordinator {
         localParticipantID = localID
 
         session.join()
+
+        // Keep FaceTime Spatial Personas visible when the app enters the
+        // mixed-immersion DrawingSpace. Without this, personas disappear
+        // as soon as an immersive space opens.
+        #if os(visionOS)
+        if let coordinator = await session.systemCoordinator {
+            var config = SystemCoordinator.Configuration()
+            config.supportsGroupImmersiveSpace = true
+            coordinator.configuration = config
+        }
+        #endif
+
         isInSession = true
         sessionHasStarted = false
 

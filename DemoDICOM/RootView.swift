@@ -31,7 +31,7 @@ struct RootView: View {
         .task {
             // Listen for incoming GroupSessions for the lifetime of this scene.
             for await session in DICOMViewerActivity.sessions() {
-                store.sharePlay.handleIncomingSession(session)
+                await store.sharePlay.handleIncomingSession(session)
             }
         }
         .onChange(of: store.isDrawingActive) { _, newValue in
