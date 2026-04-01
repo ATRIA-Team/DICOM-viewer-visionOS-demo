@@ -11,11 +11,5 @@
 		<key>UISceneConfigurations</key>
 		<dict/>
 	</dict>
-	<key>NSAccessoryTrackingUsageDescription</key>
-	<string>DemoDICOM uses Apple Pencil Pro tracking to let you draw 3D annotations on CT scan slices.</string>
-	<key>NSHandsTrackingUsageDescription</key>
-	<string>DemoDICOM uses hand tracking to support spatial interaction with CT scan slices.</string>
-	<key>NSWorldSensingUsageDescription</key>
-	<string>DemoDICOM uses world sensing to anchor 3D drawings in your physical space.</string>
 </dict>
 </plist>

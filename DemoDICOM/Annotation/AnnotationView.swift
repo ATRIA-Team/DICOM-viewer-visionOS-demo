@@ -21,6 +21,10 @@ struct AnnotationView: View {
     @State private var brushColor: Color   = .red
     @State private var brushSize:  CGFloat = 3.0
     @State private var showSavedConfirmation = false
+    /// Stroke IDs produced by this device's PencilCanvas.
+    /// Used to exclude them from AnnotationStrokesView so they aren't rendered twice
+    /// (PencilCanvas already draws them locally with immediate UIKit feedback).
+    @State private var localStrokeIDs: Set<UUID> = []
 
     var body: some View {
         NavigationStack {
@@ -35,6 +39,14 @@ struct AnnotationView: View {
                     }
                 }
         }
+        .onAppear {
+            localStrokeIDs = []
+            store.annotationWindowOpened()
+        }
+        .onDisappear {
+            store.isAnnotationWindowOpen = false
+            store.annotationWindowClosed()
+        }
     }
 
     // MARK: - Content area
@@ -46,10 +58,35 @@ struct AnnotationView: View {
                 .resizable()
                 .scaledToFit()
                 .overlay {
+                    // Remote strokes from other participants — exclude local ones
+                    // which are already rendered by PencilCanvas with immediate feedback.
+                    AnnotationStrokesView(
+                        strokes: store.annotationPanelStrokes.values.filter {
+                            !localStrokeIDs.contains($0.id)
+                        }
+                    )
+                }
+                .overlay {
                     PencilCanvas(
                         state:      canvasState,
                         brushColor: brushColor,
-                        brushSize:  brushSize
+                        brushSize:  brushSize,
+                        onAnnotationPoint: { strokeID, normalizedPoint, isStart, isEnd, r, g, b, lineWidth in
+                            // Track this as a local stroke so AnnotationStrokesView skips it.
+                            localStrokeIDs.insert(strokeID)
+                            let msg = Annotation2DPointMessage(
+                                strokeID: strokeID,
+                                x: Float(normalizedPoint.x),
+                                y: Float(normalizedPoint.y),
+                                isStart: isStart,
+                                isEnd: isEnd,
+                                colorR: r, colorG: g, colorB: b,
+                                lineWidth: lineWidth
+                            )
+                            // Update local panel immediately, then broadcast to peers.
+                            store.receiveAnnotation2DPoint(msg)
+                            store.sharePlay.sendAnnotation2DPoint(msg)
+                        }
                     )
                 }
                 .overlay(alignment: .bottom) {
@@ -152,13 +189,17 @@ struct AnnotationView: View {
             }
             .disabled(canvasState.strokeCount == 0)
 
-            // Clear all strokes
+            // Remove only this device's own strokes — collaborators' strokes are preserved
             Button(role: .destructive) {
-                canvasState.clear()
+                let ids = localStrokeIDs
+                store.sharePlay.sendRemoveAnnotationStrokes(ids: ids)
+                store.removeAnnotationStrokes(ids: ids)
+                canvasState.removeStrokes(ids: ids)
+                localStrokeIDs = []
             } label: {
-                Label("Clear", systemImage: "trash")
+                Label("Clear My Strokes", systemImage: "trash")
             }
-            .disabled(canvasState.strokeCount == 0)
+            .disabled(localStrokeIDs.isEmpty)
         }
     }
 }

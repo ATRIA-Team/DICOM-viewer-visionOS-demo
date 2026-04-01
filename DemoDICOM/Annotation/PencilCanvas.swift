@@ -32,6 +32,12 @@ final class PencilCanvasState {
         syncCount()
     }
 
+    /// Removes only the strokes whose IDs are in `ids`, leaving all others intact.
+    func removeStrokes(ids: Set<UUID>) {
+        canvasView?.removeStrokes(ids: ids)
+        syncCount()
+    }
+
     /// Composites the DICOM image and all drawn strokes into a single `UIImage`.
     /// Returns `nil` if the canvas view is not yet attached or has zero size.
     func snapshot(backgroundCGImage: CGImage) -> UIImage? {
@@ -66,11 +72,17 @@ final class PencilCanvasUIView: UIView {
 
     var onStrokeCompleted: (() -> Void)?
 
+    /// Called for every stylus point — including start and end of each stroke.
+    /// Parameters: strokeID, normalizedPoint (0-1), isStart, isEnd, colorR, colorG, colorB, lineWidth.
+    var onAnnotationPoint: ((UUID, CGPoint, Bool, Bool, Float, Float, Float, Float) -> Void)?
+
     // MARK: Private state
 
-    private var strokeLayers:  [CAShapeLayer] = []
-    private var currentPath:   UIBezierPath?
-    private var currentLayer:  CAShapeLayer?
+    /// Completed strokes, each paired with the UUID used for SharePlay sync.
+    private var strokeLayers:   [(id: UUID, layer: CAShapeLayer)] = []
+    private var currentPath:    UIBezierPath?
+    private var currentLayer:   CAShapeLayer?
+    private var currentStrokeID = UUID()
 
     // MARK: Init
 
@@ -105,17 +117,27 @@ final class PencilCanvasUIView: UIView {
 
     func undo() {
         guard let last = strokeLayers.popLast() else { return }
-        last.removeFromSuperlayer()
+        last.layer.removeFromSuperlayer()
         strokeCount = strokeLayers.count
     }
 
     func clear() {
-        strokeLayers.forEach { $0.removeFromSuperlayer() }
+        strokeLayers.forEach { $0.layer.removeFromSuperlayer() }
         strokeLayers = []
         currentLayer?.removeFromSuperlayer()
         currentLayer = nil
         currentPath  = nil
         strokeCount  = 0
+    }
+
+    /// Removes only the strokes matching `ids`, leaving all others visible.
+    func removeStrokes(ids: Set<UUID>) {
+        strokeLayers = strokeLayers.filter { entry in
+            guard ids.contains(entry.id) else { return true }
+            entry.layer.removeFromSuperlayer()
+            return false
+        }
+        strokeCount = strokeLayers.count
     }
 
     // MARK: Touch handling — Apple Pencil Pro only
@@ -127,10 +149,13 @@ final class PencilCanvasUIView: UIView {
         let path  = UIBezierPath()
         path.move(to: point)
         currentPath = path
+        currentStrokeID = UUID()
 
         let shapeLayer = makeShapeLayer()
         layer.addSublayer(shapeLayer)
         currentLayer = shapeLayer
+
+        emitPoint(point, isStart: true, isEnd: false)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -140,13 +165,16 @@ final class PencilCanvasUIView: UIView {
         // Coalesced touches give higher-resolution input with lower latency
         let samples = event?.coalescedTouches(for: touch) ?? [touch]
         for sample in samples {
-            path.addLine(to: sample.location(in: self))
+            let pt = sample.location(in: self)
+            path.addLine(to: pt)
+            emitPoint(pt, isStart: false, isEnd: false)
         }
         currentLayer?.path = path.cgPath
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first, touch.type == .pencil else { return }
+        emitPoint(touch.location(in: self), isStart: false, isEnd: true)
         finaliseStroke()
     }
 
@@ -158,6 +186,20 @@ final class PencilCanvasUIView: UIView {
     }
 
     // MARK: Private helpers
+
+    private func normalizedPoint(_ point: CGPoint) -> CGPoint {
+        let w = bounds.width  > 0 ? bounds.width  : 1
+        let h = bounds.height > 0 ? bounds.height : 1
+        return CGPoint(x: point.x / w, y: point.y / h)
+    }
+
+    private func emitPoint(_ point: CGPoint, isStart: Bool, isEnd: Bool) {
+        guard let onAnnotationPoint else { return }
+        var r: CGFloat = 1, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+        brushColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let n = normalizedPoint(point)
+        onAnnotationPoint(currentStrokeID, n, isStart, isEnd, Float(r), Float(g), Float(b), Float(brushSize))
+    }
 
     private func makeShapeLayer() -> CAShapeLayer {
         let sl = CAShapeLayer()
@@ -171,7 +213,7 @@ final class PencilCanvasUIView: UIView {
 
     private func finaliseStroke() {
         guard let layer = currentLayer else { return }
-        strokeLayers.append(layer)
+        strokeLayers.append((id: currentStrokeID, layer: layer))
         strokeCount = strokeLayers.count
         currentLayer = nil
         currentPath  = nil
@@ -186,6 +228,8 @@ final class PencilCanvasUIView: UIView {
 /// - `state` is an `@Observable` object owned by `AnnotationView`.
 ///   The representable wires the UIView into it so that SwiftUI can
 ///   call `state.undo()` / `state.clear()` from toolbar buttons.
+/// - `onAnnotationPoint` is forwarded to the UIView so callers can stream
+///   normalized stroke points for real-time SharePlay sync.
 struct PencilCanvas: UIViewRepresentable {
 
     /// Shared state object — owned by `AnnotationView`.
@@ -195,6 +239,10 @@ struct PencilCanvas: UIViewRepresentable {
     let brushColor: Color
     let brushSize:  CGFloat
 
+    /// Optional callback for every stylus point (start, move, end of each stroke).
+    /// Parameters: strokeID, normalizedPoint (0-1), isStart, isEnd, colorR, colorG, colorB, lineWidth.
+    var onAnnotationPoint: ((UUID, CGPoint, Bool, Bool, Float, Float, Float, Float) -> Void)?
+
     func makeUIView(context: Context) -> PencilCanvasUIView {
         let view = PencilCanvasUIView()
         // Wire the UIView back into the observable state object
@@ -202,11 +250,13 @@ struct PencilCanvas: UIViewRepresentable {
         view.onStrokeCompleted = { [weak state] in
             state?.strokeCompleted()
         }
+        view.onAnnotationPoint = onAnnotationPoint
         return view
     }
 
     func updateUIView(_ uiView: PencilCanvasUIView, context: Context) {
         uiView.brushColor = UIColor(brushColor)
         uiView.brushSize  = brushSize
+        uiView.onAnnotationPoint = onAnnotationPoint
     }
 }

@@ -167,6 +167,20 @@ struct ContentView: View {
     }
 
     private var sliceViewerView: some View {
+        HStack(alignment: .top, spacing: 0) {
+            mainSliceContent
+                .frame(maxWidth: .infinity)
+
+            if store.isAnnotationPanelVisible {
+                annotationPanel
+                    .frame(width: 300)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.4), value: store.isAnnotationPanelVisible)
+    }
+
+    private var mainSliceContent: some View {
         VStack(spacing: 16) {
             metadataHeader
 
@@ -178,6 +192,7 @@ struct ContentView: View {
                     .shadow(radius: 4)
                     .frame(maxHeight: .infinity)
                     .onLongPressGesture(minimumDuration: 0.5) {
+                        store.isAnnotationWindowOpen = true
                         openWindow(id: "annotation")
                     }
                     .overlay(alignment: .bottomTrailing) {
@@ -192,6 +207,50 @@ struct ContentView: View {
             presetPicker
         }
         .padding()
+    }
+
+    private var annotationPanel: some View {
+        VStack(spacing: 0) {
+            // Header — tap the expand button to open a full local viewer window
+            HStack {
+                Label("Live Annotation", systemImage: "pencil.and.outline")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    openWindow(id: "annotation")
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .imageScale(.small)
+                }
+                .buttonStyle(.borderless)
+                .help("Open annotation window to draw")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial)
+
+            // Slice + live strokes
+            if let cgImage = store.currentSliceImage {
+                Image(decorative: cgImage, scale: 1.0)
+                    .resizable()
+                    .scaledToFit()
+                    .overlay {
+                        AnnotationStrokesView(strokes: Array(store.annotationPanelStrokes.values))
+                    }
+                    .padding(12)
+            } else {
+                ContentUnavailableView(
+                    "No slice",
+                    systemImage: "doc.viewfinder"
+                )
+            }
+
+            Spacer(minLength: 0)
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 8)
+        .padding(.trailing, 8)
     }
 
     private var metadataHeader: some View {
@@ -302,6 +361,33 @@ struct ContentView: View {
             }
             .padding(32)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
+}
+
+// MARK: - AnnotationStrokesView
+
+/// Renders normalized annotation strokes scaled to the view's actual size.
+/// Used in the shared live-annotation panel so all participants see drawings in real time.
+struct AnnotationStrokesView: View {
+    let strokes: [AnnotationPanelStroke]
+
+    var body: some View {
+        Canvas { context, size in
+            for stroke in strokes {
+                guard stroke.points.count >= 2 else { continue }
+                var path = Path()
+                let first = stroke.points[0]
+                path.move(to: CGPoint(x: first.x * size.width, y: first.y * size.height))
+                for pt in stroke.points.dropFirst() {
+                    path.addLine(to: CGPoint(x: pt.x * size.width, y: pt.y * size.height))
+                }
+                context.stroke(
+                    path,
+                    with: .color(stroke.color),
+                    style: StrokeStyle(lineWidth: stroke.lineWidth, lineCap: .round, lineJoin: .round)
+                )
+            }
         }
     }
 }

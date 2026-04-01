@@ -14,6 +14,9 @@ struct RootView: View {
 
     @Environment(DICOMStore.self) private var store
 
+    @Environment(\.openImmersiveSpace) private var openImmersiveSpace
+    @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
+
     var body: some View {
         Group {
             // Show the lobby only while a session exists AND the session hasn't
@@ -31,5 +34,16 @@ struct RootView: View {
                 store.sharePlay.handleIncomingSession(session)
             }
         }
+        .onChange(of: store.isDrawingActive) { _, newValue in
+            // Ensure the immersive drawing space is synced for all participants.
+            Task {
+                if newValue {
+                    await openImmersiveSpace(id: "DrawingSpace")
+                } else {
+                    await dismissImmersiveSpace()
+                }
+            }
+        }
     }
 }
+

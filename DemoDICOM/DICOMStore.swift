@@ -10,6 +10,17 @@ import CoreGraphics
 import DicomCore
 import UniformTypeIdentifiers
 
+// MARK: - AnnotationPanelStroke
+
+/// A single stroke in the shared live-annotation panel.
+/// Points are normalized to [0, 1] so they scale correctly to any panel size.
+struct AnnotationPanelStroke {
+    let id: UUID
+    var points: [CGPoint]
+    let color: Color
+    let lineWidth: CGFloat
+}
+
 // MARK: - DICOMStore
 
 /// Observable state manager for loading and browsing CT DICOM slices.
@@ -35,7 +46,87 @@ final class DICOMStore {
 
     /// Whether the immersive drawing space is currently open.
     /// Shared so both ContentView and ImmersiveDrawingView can read/write it.
-    var isDrawingActive = false
+    var isDrawingActive = false {
+        didSet {
+            guard isDrawingActive != oldValue else { return }
+            sharePlay.send(DICOMSyncMessage(kind: isDrawingActive ? .drawingSpaceOpened : .drawingSpaceClosed))
+        }
+    }
+
+    /// Whether the 2-D annotation window is open on this device.
+    /// Local only — not synced via SharePlay.
+    var isAnnotationWindowOpen = false
+
+    /// Number of annotation windows currently open on THIS device.
+    private var localAnnotationWindowCount = 0
+
+    /// Number of remote devices that currently have at least one annotation window open.
+    /// Incremented when a peer sends `annotationPanelOpened`, decremented on `annotationPanelClosed`.
+    private(set) var remoteAnnotatorCount = 0
+
+    /// The shared live-annotation panel is visible as long as at least one window
+    /// (on any participant's device) is open.
+    var isAnnotationPanelVisible: Bool { localAnnotationWindowCount > 0 || remoteAnnotatorCount > 0 }
+
+    // MARK: - Annotation window lifecycle
+
+    /// Call when an annotation window opens on this device.
+    /// Sends `annotationPanelOpened` via SharePlay on the first window only.
+    @MainActor
+    func annotationWindowOpened() {
+        let wasActive = isAnnotationPanelVisible
+        localAnnotationWindowCount += 1
+        if localAnnotationWindowCount == 1 {
+            if !wasActive {
+                // Fresh session — clear any leftover strokes from a previous session.
+                annotationPanelStrokes = [:]
+            }
+            sharePlay.send(DICOMSyncMessage(kind: .annotationPanelOpened))
+        }
+    }
+
+    /// Call when an annotation window closes on this device.
+    /// Sends `annotationPanelClosed` via SharePlay when the last local window closes.
+    @MainActor
+    func annotationWindowClosed() {
+        localAnnotationWindowCount = max(0, localAnnotationWindowCount - 1)
+        if localAnnotationWindowCount == 0 {
+            sharePlay.send(DICOMSyncMessage(kind: .annotationPanelClosed))
+            if remoteAnnotatorCount == 0 {
+                // Session is fully over — clear strokes.
+                annotationPanelStrokes = [:]
+            }
+        }
+    }
+
+    /// Live annotation strokes shown in the shared panel.
+    /// Keyed by strokeID so incoming points can be appended to the right stroke.
+    var annotationPanelStrokes: [UUID: AnnotationPanelStroke] = [:]
+
+
+    /// Removes only the specified strokes from the shared panel.
+    /// Does NOT send a SharePlay message — callers are responsible for broadcasting first.
+    @MainActor
+    func removeAnnotationStrokes(ids: Set<UUID>) {
+        for id in ids { annotationPanelStrokes.removeValue(forKey: id) }
+    }
+
+    /// Appends an incoming (local or remote) 2-D annotation point to the panel strokes.
+    @MainActor
+    func receiveAnnotation2DPoint(_ msg: Annotation2DPointMessage) {
+        let pt = CGPoint(x: CGFloat(msg.x), y: CGFloat(msg.y))
+        let color = Color(red: Double(msg.colorR), green: Double(msg.colorG), blue: Double(msg.colorB))
+        if msg.isStart {
+            annotationPanelStrokes[msg.strokeID] = AnnotationPanelStroke(
+                id: msg.strokeID,
+                points: [pt],
+                color: color,
+                lineWidth: CGFloat(msg.lineWidth)
+            )
+        } else {
+            annotationPanelStrokes[msg.strokeID]?.points.append(pt)
+        }
+    }
 
     // MARK: - Init
 
@@ -117,8 +208,19 @@ final class DICOMStore {
         case .presetChanged(let rawValue):
             guard let preset = MedicalPreset(rawValue: rawValue) else { return }
             selectedPreset = preset
-        case .participantReady, .participantNotReady, .clearDrawings:
-            // Lobby and drawing messages are handled elsewhere, not by the store.
+        case .annotationPanelOpened:
+            remoteAnnotatorCount += 1
+        case .annotationPanelClosed:
+            remoteAnnotatorCount = max(0, remoteAnnotatorCount - 1)
+            if remoteAnnotatorCount == 0 && localAnnotationWindowCount == 0 {
+                annotationPanelStrokes = [:]
+            }
+        case .drawingSpaceOpened:
+            isDrawingActive = true
+        case .drawingSpaceClosed:
+            isDrawingActive = false
+        case .participantReady, .participantNotReady, .clearDrawings, .removeAnnotationStrokes:
+            // Handled directly in SharePlayCoordinator.apply(), not by the store.
             break
         }
     }

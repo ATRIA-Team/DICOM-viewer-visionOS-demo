@@ -177,11 +177,19 @@ final class SharePlayCoordinator {
             }
         })
 
-        // Receive real-time draw points (unreliable / best-effort, like UDP)
+        // Receive real-time 3D draw points (unreliable / best-effort, like UDP)
         sessionTasks.append(Task { @MainActor [weak self] in
             guard let self else { return }
             for await (message, _) in unreliableMessenger.messages(of: DrawPointMessage.self) {
                 self.store?.drawing.receiveRemotePoint(message)
+            }
+        })
+
+        // Receive real-time 2D annotation points from the annotating peer
+        sessionTasks.append(Task { @MainActor [weak self] in
+            guard let self else { return }
+            for await (message, _) in unreliableMessenger.messages(of: Annotation2DPointMessage.self) {
+                self.store?.receiveAnnotation2DPoint(message)
             }
         })
     }
@@ -242,12 +250,30 @@ final class SharePlayCoordinator {
         }
     }
 
+    /// Sends a single real-time 2D annotation point to all peers via the unreliable messenger.
+    /// Called by `AnnotationView` for every locally drawn stylus point.
+    func sendAnnotation2DPoint(_ message: Annotation2DPointMessage) {
+        guard isInSession, let unreliableMessenger else { return }
+        Task {
+            try? await unreliableMessenger.send(message)
+        }
+    }
+
     /// Broadcasts a clear-drawings command to all peers via the reliable messenger.
     /// Called by the local clear button in `ContentView`.
     func sendClearDrawings() {
         guard isInSession, let messenger else { return }
         Task {
             try? await messenger.send(DICOMSyncMessage(kind: .clearDrawings))
+        }
+    }
+
+    /// Broadcasts a targeted stroke-removal command to all peers via the reliable messenger.
+    /// Only the strokes whose IDs are listed will be removed; others are preserved.
+    func sendRemoveAnnotationStrokes(ids: Set<UUID>) {
+        guard isInSession, !ids.isEmpty, let messenger else { return }
+        Task {
+            try? await messenger.send(DICOMSyncMessage(kind: .removeAnnotationStrokes(strokeIDs: Array(ids))))
         }
     }
 
@@ -312,7 +338,7 @@ final class SharePlayCoordinator {
             participantStates[participant.id]?.seriesDescription = ""
             participantStates[participant.id]?.patientName = ""
 
-        case .sliceChanged, .presetChanged:
+        case .sliceChanged, .presetChanged, .annotationPanelOpened, .annotationPanelClosed, .drawingSpaceOpened, .drawingSpaceClosed:
             // Guard against echo: the didSet observers on DICOMStore check
             // isApplyingRemoteChange and skip re-broadcasting when it is raised.
             isApplyingRemoteChange = true
@@ -321,6 +347,9 @@ final class SharePlayCoordinator {
 
         case .clearDrawings:
             store?.drawing.receiveClearDrawings()
+
+        case .removeAnnotationStrokes(let strokeIDs):
+            store?.removeAnnotationStrokes(ids: Set(strokeIDs))
         }
     }
 

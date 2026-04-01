@@ -167,11 +167,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DemoDICOM/DemoDICOM.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 2263LPF2FA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
+				INFOPLIST_KEY_NSAccessoryTrackingUsageDescription = "DemoDICOM uses spatial accessory tracking to let you draw 3D annotations on CT scan slices.";
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "DemoDICOM uses hand tracking to support spatial interaction with CT scan slices.";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "DemoDICOM uses world sensing to anchor 3D drawings in your physical space.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -198,11 +201,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DemoDICOM/DemoDICOM.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 2263LPF2FA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
+				INFOPLIST_KEY_NSAccessoryTrackingUsageDescription = "DemoDICOM uses spatial accessory tracking to let you draw 3D annotations on CT scan slices.";
+				INFOPLIST_KEY_NSHandsTrackingUsageDescription = "DemoDICOM uses hand tracking to support spatial interaction with CT scan slices.";
+				INFOPLIST_KEY_NSWorldSensingUsageDescription = "DemoDICOM uses world sensing to anchor 3D drawings in your physical space.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
